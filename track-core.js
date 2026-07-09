@@ -779,8 +779,10 @@
     }
 
     function flushByBeacon() {
-        if (state.webhookDisabled) return;
-        if (state.flushInFlight) return;
+        // ★ VÁ CAPTURE: KHÔNG bỏ cuộc khi đang kẹt (flushInFlight/webhookDisabled).
+        //   Đây là lần gửi CUỐI lúc khách rời trang → phải cố gửi cho được
+        //   (keepalive sống qua điều hướng + n8n dedup theo event_id nên không sợ trùng).
+        state.webhookDisabled = false;
         if (state.unloadFlushStarted) return;
         if (!state.queue.length) return;
         if (!CONFIG.WEBHOOK_URL || CONFIG.WEBHOOK_URL.indexOf('your-webhook-endpoint') !== -1) return;
