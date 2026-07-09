@@ -581,6 +581,11 @@
             persistSubmissionId(state.submissionId);    // ★ lưu cookie
             const _phoneForId = normalizePhoneByCountry(formData.phone).meta || String(formData.phone || '').replace(/\D+/g, '');
             const submitParentId = _phoneForId ? ('p' + (await sha256Safe(_phoneForId)).slice(0, 24)) : state.submissionId;
+            // ★ Đảm bảo cụm submit LUÔN gửi được, kể cả khi trước đó webhook bị lỗi/tắt tạm (n8n chậm/lỗi lúc cao điểm)
+            state.webhookDisabled = false;
+            state.retryCount = 0;
+            clearTimeout(state.retryTimer);
+            state.retryTimer = null;
             await enqueueSubmitCluster(formData, productPayload, submitParentId);
             // ★ VÁ RỚT ĐƠN: gửi thẳng cụm submit bằng keepalive, KHÔNG phụ thuộc flushInFlight
             try {
