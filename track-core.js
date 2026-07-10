@@ -93,8 +93,8 @@
         initiateCheckoutFired: false,
         inputDebounceTimer: null,
         allowNativeSubmitOnce: false,
-        submissionId: loadSubmissionId(),
-        submitClusterFired: !!loadSubmissionId(),
+        submissionId: null,
+        submitClusterFired: false,
 
         ip: null,
         country: null,
@@ -226,7 +226,17 @@
             log('submit_cluster_skipped', { submitId: submitId });
             return;
         }
+        // ★ VÁ NUỐT LEAD: chỉ chặn trùng khi CÙNG SĐT đặt lại trong 6h trên CÙNG trang.
+        //   (Trước đây: 1 khoá chung cho CẢ TÊN MIỀN → đặt ở landing A xong,
+        //    landing B nuốt Lead/Complete của khách khác → báo cáo thiếu mua.)
+        const _phGuard = String((formData && formData.phone) || '').replace(/\D/g, '');
+        const _prevRec = loadSubmissionId();
+        if (_prevRec && _prevRec.ph && _phGuard && _prevRec.ph === _phGuard) {
+            log('submit_cluster_skipped_same_phone', { submitId: submitId });
+            return;
+        }
         state.submitClusterFired = true;
+        persistSubmissionId(submitId, _phGuard);
         const baseData = {
             name: formData.name,
             phone: formData.phone,
@@ -578,7 +588,7 @@
             const product = resolveSelectedProduct(form);
             const productPayload = toProductPayload(product);
 	    if (!state.submissionId) state.submissionId = makeId('sub');
-            persistSubmissionId(state.submissionId);    // ★ lưu cookie
+            // (persist chuyển vào enqueueSubmitCluster — lưu kèm SĐT để chặn trùng đúng người)
             const _phoneForId = normalizePhoneByCountry(formData.phone).meta || String(formData.phone || '').replace(/\D+/g, '');
             const submitParentId = _phoneForId ? ('p' + (await sha256Safe(_phoneForId)).slice(0, 24)) : state.submissionId;
             // ★ Đảm bảo cụm submit LUÔN gửi được, kể cả khi trước đó webhook bị lỗi/tắt tạm (n8n chậm/lỗi lúc cao điểm)
@@ -1798,7 +1808,7 @@
             // bỏ qua lỗi quota hoặc chế độ riêng tư
         }
     }
-    function SUBMISSION_KEY() { return '__landing_submission_id__'; }
+    function SUBMISSION_KEY() { return '__landing_submission_id__:' + location.pathname; }
 
     function loadSubmissionId() {
         try {
@@ -1810,13 +1820,13 @@
                 localStorage.removeItem(SUBMISSION_KEY());
                 return null;
             }
-            return obj.id;
+            return obj; // trả cả record {id, ts, ph} để so SĐT
         } catch (e) { return null; }
     }
 
-    function persistSubmissionId(id) {
+    function persistSubmissionId(id, ph) {
         try {
-            localStorage.setItem(SUBMISSION_KEY(), JSON.stringify({ id: id, ts: Date.now() }));
+            localStorage.setItem(SUBMISSION_KEY(), JSON.stringify({ id: id, ts: Date.now(), ph: String(ph || '') }));
         } catch (e) {}
     }
 
