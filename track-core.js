@@ -31,7 +31,7 @@
         TIME_THRESHOLDS: [3, 10, 30, 60, 120, 180, 300],
         SCROLL_THRESHOLDS: [25, 50, 75, 100],
 
-        BATCH_INTERVAL: 5000,
+        BATCH_INTERVAL: 15000,
         MAX_EVENTS_PER_BATCH: 20,
         MAX_QUEUE_SIZE: 200,
         MAX_RETRY: 8,
@@ -142,6 +142,15 @@
         const opts = options || {};
         const eventId = sanitizeEventId(opts.eventId || makeEventId(eventName));
         const finalCustomData = resolveEventCustomData(eventName, customData);
+
+        // ★ GIẢM TẢI SERVER: Time_/Scroll_ chỉ bắn pixel trình duyệt (Meta vẫn nhận đủ tín hiệu),
+        //   KHÔNG gửi về webhook nữa — n8n đang quá tải vì các event phụ này (sập -> mất khách).
+        if (/^(Time|Scroll)_/i.test(eventName)) {
+            if (opts.dispatchPixels !== false) {
+                dispatchBrowserPixels(eventName, finalCustomData, eventId, buildUserData(opts.userData));
+            }
+            return;
+        }
 
         const payload = {
             event_name: eventName,
