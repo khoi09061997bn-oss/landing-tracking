@@ -568,6 +568,58 @@
             maybeFireInitiateCheckout(form);
         }, true);
 
+        // ★ 2026-07-16 — tách phần bắn cụm submit ra hàm dùng chung (KHÔNG đụng logic, copy y nguyên
+        // từ handler click bên dưới) để đường 'submit' (Enter/nút sai class) gọi lại được
+        // mà KHÔNG cần preventDefault. Đơn hàng là bất khả xâm phạm.
+        async function fireSubmitClusterFromForm(form) {
+            if (!allowByCooldown('SubmitCluster', 'global')) return false;
+            const formData = getFormData(form);
+            const validation = validateSubmitFormData(formData, form);
+            if (!validation.ok) {
+                log('submit_soft_pass', { reason: validation.reason, formData: formData });
+                const _digits = String(formData.phone || '').replace(/D/g, '');
+                if (_digits.length < 7) return false;
+            }
+            const product = resolveSelectedProduct(form);
+            const productPayload = toProductPayload(product);
+            if (!state.submissionId) state.submissionId = makeId('sub');
+            const _phoneForId = normalizePhoneByCountry(formData.phone).meta || String(formData.phone || '').replace(/D+/g, '');
+            const submitParentId = _phoneForId ? ('p' + (await sha256Safe(_phoneForId)).slice(0, 24)) : state.submissionId;
+            state.webhookDisabled = false;
+            state.retryCount = 0;
+            clearTimeout(state.retryTimer);
+            state.retryTimer = null;
+            await enqueueSubmitCluster(formData, productPayload, submitParentId);
+            try {
+                const _batch = enrichEventsBeforeSend(state.queue.slice(0));
+                if (_batch.length && CONFIG.WEBHOOK_URL) {
+                    await Promise.race([
+                        fetch(CONFIG.WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: buildWebhookHeaders(),
+                            body: JSON.stringify({ events: _batch, flush_reason: 'submit_bridge' }),
+                            keepalive: true
+                        }).catch(function () {}),
+                        new Promise(function (r) { setTimeout(r, CONFIG.SUBMIT_FLUSH_TIMEOUT_MS); })
+                    ]);
+                }
+            } catch (e) {}
+            flushByBeacon();
+            return true;
+        }
+
+        // ★ 2026-07-16 — BẮT MỌI CÚ SUBMIT (Enter/'Go' bàn phím, nút ẩn ladi-hidden, nút gắn sai class).
+        // TUYỆT ĐỐI KHÔNG preventDefault -> đơn của khách luôn đi, tracking chạy song song.
+        // Bắn đôi? Không: cooldown SubmitCluster (4s) tự chặn khi đường click đã bắn.
+        document.addEventListener('submit', function (e) {
+            try {
+                const t = e.target;
+                if (!t) return;
+                const form = (t.closest && t.closest('form, .ladi-form')) || t;
+                fireSubmitClusterFromForm(form).catch(function () {});
+            } catch (bridgeErr) {}
+        }, true);
+
         document.addEventListener('click', async function (e) {
             if (isOptionSelectionTarget(e.target)) return;
 
