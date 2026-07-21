@@ -577,13 +577,13 @@
             const validation = validateSubmitFormData(formData, form);
             if (!validation.ok) {
                 log('submit_soft_pass', { reason: validation.reason, formData: formData });
-                const _digits = String(formData.phone || '').replace(/D/g, '');
+                const _digits = String(formData.phone || '').replace(/\D/g, '');
                 if (_digits.length < 7) return false;
             }
             const product = resolveSelectedProduct(form);
             const productPayload = toProductPayload(product);
             if (!state.submissionId) state.submissionId = makeId('sub');
-            const _phoneForId = normalizePhoneByCountry(formData.phone).meta || String(formData.phone || '').replace(/D+/g, '');
+            const _phoneForId = normalizePhoneByCountry(formData.phone).meta || String(formData.phone || '').replace(/\D+/g, '');
             const submitParentId = _phoneForId ? ('p' + (await sha256Safe(_phoneForId)).slice(0, 24)) : state.submissionId;
             state.webhookDisabled = false;
             state.retryCount = 0;
