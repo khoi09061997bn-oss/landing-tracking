@@ -97,6 +97,7 @@
         submitClusterFired: false,
 
         ip: null,
+        ipv6: null,
         country: null,
 	externalIdHashed: null,
 	countryHashed: null
@@ -117,6 +118,8 @@
     bootstrap();
 
     async function bootstrap() {
+        // IPv6 hỏi song song, KHÔNG chờ — có thì gắn vào event lúc gửi (enrichEventsBeforeSend)
+        prefetchIpv6();
         // Chạy lấy IP/Country trước, sau đó mới đăng ký tracking
         await prefetchIpFirst();
 	// Hash 1 lần, dùng cho mọi event sau này
@@ -1097,6 +1100,19 @@
         }
     }
 
+    // IPv6 của khách: n8n chỉ có IPv4 nên header chỉ thấy IPv4 CGNAT (nhiều thuê bao dùng chung → Meta báo
+    // "IP liên kết với nhiều người dùng"). api6.ipify.org CHỈ trả lời qua IPv6 → máy không có IPv6 thì lỗi, bỏ qua.
+    function prefetchIpv6() {
+        return fetchWithTimeout('https://api6.ipify.org?format=json', CONFIG.IPV6_PREFETCH_TIMEOUT_MS || 3000)
+            .then(function (j) {
+                const v = String(j && j.ip ? j.ip : '').trim();
+                if (v.length <= 45 && v.indexOf(':') > 0 && /^[0-9A-Fa-f:]+$/.test(v)) state.ipv6 = v;
+            })
+            .catch(function (err) {
+                log('ipv6_unavailable', { error: String(err && err.message ? err.message : err) });
+            });
+    }
+
     function prefetchIpFirst() {
         const timeoutMs = CONFIG.IP_PREFETCH_TIMEOUT_MS || 5000;
         const providers = [
@@ -1261,6 +1277,10 @@
             }
             if (!userData.client_country && state.country) {
                 userData.client_country = state.country;
+            }
+            // n8n ưu tiên IPv6 này làm client_ip_address gửi Meta/TikTok
+            if (!userData.client_ip_v6 && state.ipv6) {
+                userData.client_ip_v6 = state.ipv6;
             }
 
             ev.user_data = userData;
